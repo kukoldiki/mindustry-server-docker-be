@@ -1,0 +1,40 @@
+name: Update Mindustry Version
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get latest release
+        id: release
+        run: |
+          TAG=$(curl -s https://api.github.com/repos/Anuken/MindustryBuilds/releases/latest | jq -r .tag_name)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Update Dockerfile
+        run: |
+          sed -Ei "s|releases/download/[0-9]+/Mindustry-BE-Server-[0-9]+\.jar|releases/download/${{ steps.release.outputs.tag }}/Mindustry-BE-Server-${{ steps.release.outputs.tag }}.jar|g" Dockerfile
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          if git diff --quiet; then
+            echo "Nothing changed."
+            exit 0
+          fi
+
+          git add Dockerfile
+          git commit -m "Update Mindustry BE to ${{ steps.release.outputs.tag }}"
+          git push
