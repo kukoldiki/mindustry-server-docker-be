@@ -1,4 +1,4 @@
-name: Update Mindustry Version
+name: Update & Publish
 
 on:
   schedule:
@@ -7,9 +7,15 @@ on:
 
 permissions:
   contents: write
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  update:
+  update-and-publish:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,19 +28,64 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Update Dockerfile
+        id: dockerfile
         run: |
           sed -Ei "s|releases/download/[0-9]+/Mindustry-BE-Server-[0-9]+\.jar|releases/download/${{ steps.release.outputs.tag }}/Mindustry-BE-Server-${{ steps.release.outputs.tag }}.jar|g" Dockerfile
 
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing changed."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "New version: ${{ steps.release.outputs.tag }}"
+          fi
+
       - name: Commit changes
+        if: steps.dockerfile.outputs.changed == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-
-          if git diff --quiet; then
-            echo "Nothing changed."
-            exit 0
-          fi
-
           git add Dockerfile
           git commit -m "Update Mindustry BE to ${{ steps.release.outputs.tag }}"
           git push
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20
+        with:
+          cosign-release: 'v2.2.4'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.release.outputs.tag }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        id: build-and-push
+        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Sign the published Docker image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
