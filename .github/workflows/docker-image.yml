@@ -24,13 +24,18 @@ jobs:
       - name: Get latest release
         id: release
         run: |
-          TAG=$(curl -s https://api.github.com/repos/Anuken/MindustryBuilds/releases/latest | jq -r .tag_name)
+          TAG=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/Anuken/MindustryBuilds/releases/latest | jq -r .tag_name)
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "Failed to fetch latest release tag"
+            exit 1
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Update Dockerfile
         id: dockerfile
         run: |
           sed -Ei "s|releases/download/[0-9]+/Mindustry-BE-Server-[0-9]+\.jar|releases/download/${{ steps.release.outputs.tag }}/Mindustry-BE-Server-${{ steps.release.outputs.tag }}.jar|g" Dockerfile
+          sed -Ei "s|releases/download/null/Mindustry-BE-Server-null\.jar|releases/download/${{ steps.release.outputs.tag }}/Mindustry-BE-Server-${{ steps.release.outputs.tag }}.jar|g" Dockerfile
 
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
