@@ -5,7 +5,7 @@ RUN groupadd -r mindustry && useradd -r -g mindustry mindustry
 WORKDIR /app
 
 ADD --chown=mindustry:mindustry \
-    https://github.com/Anuken/MindustryBuilds/releases/download/27611/Mindustry-BE-Server-27611.jar \
+    https://github.com/Anuken/MindustryBuilds/releases/download/27613/Mindustry-BE-Server-27613.jar \
     /app/server.jar
 
 RUN mkdir -p /app/config && chown -R mindustry:mindustry /app
